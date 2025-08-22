@@ -10,7 +10,7 @@ local Config = {
 
     -- ## NEW TIMING SETTINGS ##
     BurstDuration = 2,  -- How many seconds to run at full speed.
-    WaitDuration = 15   -- How many seconds to pause between bursts.
+    WaitDuration = 5   -- How many seconds to pause between bursts.
 }
 getgenv().Config = Config
 
