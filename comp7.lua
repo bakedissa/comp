@@ -1,5 +1,5 @@
---[[
-============================================================
+--[[sadasdasdasdasddas
+===============adasd=============================================
 -- ## CONFIGURATION ##
 ============================================================
 ]]
@@ -7,14 +7,14 @@ local Config = {
     Enabled = true,
     BOXES_TO_OPEN = { "Mystery Box", "Light Box", "Festival Mystery Box" },
     UseQuantity = 1000,
-    AutoOpenBoxes = false, -- ## NEW: Toggle state for opening boxes ##
+    AutoOpenBoxes = true,
 
     -- ## TIMING SETTINGS ##
-    BurstDuration = 1,  -- How many seconds to run at full speed.
-    WaitDuration = 7,   -- How many seconds to pause between bursts.
+    BurstDuration = 2,  -- How many seconds to run at full speed.
+    WaitDuration = 5,   -- How many seconds to pause between bursts.
 
     -- ## PROXIMITY SETTING ##
-    EggAreaRadius = 50 -- The maximum distance from the main egg area to be able to open boxes.
+    EggAreaRadius = 150 -- The maximum distance from the main egg area to be able to open boxes.
 }
 getgenv().Config = Config
 
@@ -54,7 +54,6 @@ local isPlayerInMainEggArea
 -- ## THREAD 2: BOX USER (CONTROLLED BY SCHEDULER) ##
 task.spawn(function()
     while getgenv().Config.Enabled do
-        -- ## UPDATED: Added check for the AutoOpenBoxes toggle ##
         if isBurstActive and getgenv().Config.AutoOpenBoxes and isPlayerInMainEggArea and isPlayerInMainEggArea() then
             for _, boxName in ipairs(getgenv().Config.BOXES_TO_OPEN) do
                 RemoteEvent:FireServer(unpack({"UseGift", boxName, getgenv().Config.UseQuantity}))
@@ -100,7 +99,7 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))() 
 
 local Window = Fluent:CreateWindow({ 
-	Title = "shitass comp script v3.3", -- updated version
+	Title = "shitass comp script v3.5", -- updated version
 	SubTitle = "made by lonly on discord", 
 	TabWidth = 160, 
 	Size = UDim2.fromOffset(600, 520), 
@@ -156,7 +155,8 @@ end)
 
 local questToggles = {} 
 local dontSkipMiningToggle
-local noTwoShinyTasksToggle -- ## NEW: Declare toggle for shiny task logic ##
+local noTwoShinyTasksToggle
+local avoidFarEggsToggle
 
 -- List of main egg positions for proximity check
 local mainEggPositions = {
@@ -176,6 +176,15 @@ local mainEggPositions = {
     Vector3.new(-95, 10, -63),          -- Cyber Egg
     Vector3.new(-99, 9, -26),           -- Infinity Egg
     Vector3.new(-83, 10, -57)           -- Neon Egg
+}
+
+-- List of far away eggs to avoid
+local farAwayEggs = {
+    "Icy Egg",
+    "Vine Egg",
+    "Lava Egg",
+    "Atlantis Egg",
+    "Dreamer Egg"
 }
 
 -- Proximity check function
@@ -244,6 +253,17 @@ local function hatchEgg(eggName)
 	end 
 end 
 
+-- Helper function to check if a task is for a far away egg
+local function isFarAwayEggTask(title)
+    local lowerTitle = title:lower()
+    for _, eggName in ipairs(farAwayEggs) do
+        if lowerTitle:find(eggName:lower():gsub(" egg", ""), 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
 local function taskManager() 
 	while taskAutomationEnabled do 
 		local success, err = pcall(function() 
@@ -278,7 +298,7 @@ local function taskManager()
 
 			local highestPriorityAction = nil 
 			local protectedSlots = {} 
-            local hasFoundFirstShiny = false -- ## NEW: Flag for shiny task logic ##
+            local hasFoundFirstShiny = false
 
 			for _, questData in ipairs(quests) do 
 				local toggle = questToggles[questData.ID] 
@@ -287,43 +307,50 @@ local function taskManager()
 						local lowerTitle = task.title:lower():gsub("%s+", " ") 
 						if task.type == "Repeatable" and lowerTitle:find(questData.Pattern, 1, true) then 
                             
-                            -- ## NEW: Logic to handle "No Two Shiny Tasks" ##
-                            local isShinyQuest = questData.Pattern == "shiny"
-                            if isShinyQuest and noTwoShinyTasksToggle and noTwoShinyTasksToggle.Value and hasFoundFirstShiny then
-                                -- This is a second shiny quest and the setting is on, so we skip protecting it.
-                                -- This will cause it to be rerolled later.
+                            -- Check for far away eggs
+                            local isFarQuest = isFarAwayEggTask(task.title)
+                            if avoidFarEggsToggle and avoidFarEggsToggle.Value and isFarQuest then
+                                -- It's a far egg quest and the toggle is on, so we DO NOT protect it.
                             else
-                                -- This is a valid quest to protect.
-                                if not protectedSlots[task.slot] then 
-                                    protectedSlots[task.slot] = true 
-                                    if isShinyQuest then hasFoundFirstShiny = true end -- Mark that we've found our one shiny quest.
-                                end 
-
-                                if not highestPriorityAction then 
-                                    local matchedEgg = nil 
-                                    for eggName in pairs(eggPositions) do 
-                                        if lowerTitle:find(eggName:lower():gsub(" egg", ""), 1, true) then 
-                                            matchedEgg = eggName 
-                                            break 
-                                        end 
+                                -- It's a normal quest, proceed with protection logic.
+                                local isShinyQuest = questData.Pattern == "shiny"
+                                if isShinyQuest and noTwoShinyTasksToggle and noTwoShinyTasksToggle.Value and hasFoundFirstShiny then
+                                    -- This is a second shiny quest and the setting is on, so we skip protecting it.
+                                else
+                                    -- This is a valid quest to protect.
+                                    if not protectedSlots[task.slot] then 
+                                        protectedSlots[task.slot] = true 
+                                        if isShinyQuest then hasFoundFirstShiny = true end -- Mark that we've found our one shiny quest.
                                     end 
 
-                                    local selectedOption = Options["EggFor_"..questData.ID] 
-                                    local fallbackEgg = (selectedOption and selectedOption.Value) or questData.DefaultEgg 
-                                    local eggToHatch = matchedEgg or fallbackEgg 
-                                    
-                                    highestPriorityAction = { egg = eggToHatch, title = task.title } 
-                                end 
+                                    if not highestPriorityAction then 
+                                        local matchedEgg = nil 
+                                        for eggName in pairs(eggPositions) do 
+                                            if lowerTitle:find(eggName:lower():gsub(" egg", ""), 1, true) then 
+                                                matchedEgg = eggName 
+                                                break 
+                                            end 
+                                        end 
+
+                                        local selectedOption = Options["EggFor_"..questData.ID] 
+                                        local fallbackEgg = (selectedOption and selectedOption.Value) or questData.DefaultEgg 
+                                        local eggToHatch = matchedEgg or fallbackEgg 
+                                        
+                                        highestPriorityAction = { egg = eggToHatch, title = task.title } 
+                                    end 
+                                end
                             end
 						end 
 					end 
 				end 
 			end 
             
-            -- Protect Mining Egg quests if the toggle is enabled
+            -- ## UPDATED: Protect specific "Hatch 200" Mining Egg quests if the toggle is enabled ##
             if dontSkipMiningToggle and dontSkipMiningToggle.Value then
                 for _, task in ipairs(repeatableTasks) do
-                    if task.type == "Repeatable" and task.title:lower():find("mining egg", 1, true) then
+                    local lowerTitle = task.title:lower()
+                    -- Only protect the quest if it's for the mining egg AND it's a "hatch 200" quest.
+                    if task.type == "Repeatable" and lowerTitle:find("mining egg", 1, true) and lowerTitle:find("200", 1, true) then
                         protectedSlots[task.slot] = true -- Protect this slot from being rerolled
                     end
                 end
@@ -372,7 +399,6 @@ MainTab:AddToggle("AutoTasks", {
 	end 
 }) 
 
--- ## NEW: Added toggle for auto opening boxes ##
 MainTab:AddToggle("AutoOpenBoxes", {
     Title = "Auto Open Boxes",
     Default = getgenv().Config.AutoOpenBoxes,
@@ -397,13 +423,17 @@ end
 
 QuestTab:AddParagraph({ Title = "Special Quest Handling:" })
 dontSkipMiningToggle = QuestTab:AddToggle("DontSkipMiningEggs", {
-    Title = "Don't Skip Mining Eggs",
+    Title = "Don't Skip 200 Mining Egg",
     Default = true
 })
 
--- ## NEW: Added toggle for "No Two Shiny Tasks" ##
 noTwoShinyTasksToggle = QuestTab:AddToggle("NoTwoShinyTasks", {
     Title = "No Two Shiny Tasks",
+    Default = true
+})
+
+avoidFarEggsToggle = QuestTab:AddToggle("AvoidFarEggs", {
+    Title = "Avoid Far Away Eggs",
     Default = true
 })
 
