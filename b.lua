@@ -1,20 +1,18 @@
-setfpscap(5)
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
--- Configuration
-local TARGET_USERNAME = "hiraethent" -- The player with the bow
-local FORMATION_RADIUS = 8 -- Distance from target player
-local MIN_DISTANCE = 6 -- Minimum distance between teleported players
-local GROUND_HEIGHT = 2.5 -- Closer to ground for arrow hitboxes
+-- Configuration - INCREASED DISTANCES
+local TARGET_USERNAME = "TargetUsername" -- The player with the bow
+local FORMATION_RADIUS = 15 -- Increased from 8 to 15 studs (bow range)
+local MIN_DISTANCE = 10 -- Increased from 6 to 10 studs between players
+local GROUND_HEIGHT = 2 -- Slightly higher for better visibility
 local SAFE_AREA_CENTER = Vector3.new(-2, 23, 3)
 local SAFE_AREA_RADIUS = 50
 
 local localPlayer = Players.LocalPlayer
 local targetPlayer = nil
 local connection = nil
-local teleportedPlayers = {} -- Track all teleported players to avoid collisions
+local teleportedPlayers = {}
 
 -- Function to check if a position is within the safe area
 local function isInSafeArea(position)
@@ -31,35 +29,50 @@ local function isTooCloseToOthers(position, excludingPlayer)
     return false
 end
 
+-- Function to check if position is too close to target player
+local function isTooCloseToTarget(position, targetPosition)
+    return (position - targetPosition).Magnitude < (FORMATION_RADIUS - 3)
+end
+
 -- Function to get a safe formation position around the target
 local function getFormationPosition(targetPosition, player)
     local attempts = 0
-    local maxAttempts = 20
+    local maxAttempts = 25
     
     while attempts < maxAttempts do
         -- Use consistent angles based on player for formation
-        local playerCount = math.max(1, #Players:GetPlayers() - 1) -- Exclude target
+        local otherPlayers = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= targetPlayer then
+                table.insert(otherPlayers, p)
+            end
+        end
+        
+        local playerCount = math.max(1, #otherPlayers)
         local angleIncrement = (2 * math.pi) / playerCount
         local playerIndex = 0
         
         -- Find this player's index
-        for i, p in ipairs(Players:GetPlayers()) do
-            if p == player and p ~= targetPlayer then
+        for i, p in ipairs(otherPlayers) do
+            if p == player then
                 playerIndex = i
                 break
             end
         end
         
-        local angle = playerIndex * angleIncrement + (math.sin(time() * 0.5) * 0.2) -- Slight movement
+        local angle = playerIndex * angleIncrement
+        local variedRadius = FORMATION_RADIUS + math.random(-2, 2) -- Slight variation
         
         local position = targetPosition + Vector3.new(
-            math.cos(angle) * FORMATION_RADIUS,
-            GROUND_HEIGHT, -- Close to ground for arrow hitboxes
-            math.sin(angle) * FORMATION_RADIUS
+            math.cos(angle) * variedRadius,
+            GROUND_HEIGHT,
+            math.sin(angle) * variedRadius
         )
         
-        -- Check if position is safe and not too close to others
-        if isInSafeArea(position) and not isTooCloseToOthers(position, player) then
+        -- Check all safety conditions
+        if isInSafeArea(position) and 
+           not isTooCloseToOthers(position, player) and
+           not isTooCloseToTarget(position, targetPosition) then
             return position
         end
         
@@ -68,21 +81,22 @@ local function getFormationPosition(targetPosition, player)
         -- Try random position if formation fails
         if attempts > 10 then
             local randomAngle = math.random() * 2 * math.pi
-            local randomRadius = math.random(FORMATION_RADIUS - 2, FORMATION_RADIUS + 2)
+            local randomRadius = math.random(FORMATION_RADIUS, FORMATION_RADIUS + 5) -- Even more distance
             
             position = targetPosition + Vector3.new(
                 math.cos(randomAngle) * randomRadius,
-                GROUND_HEIGHT,
+                GROUND_HEIGHT + math.random(-1, 1),
                 math.sin(randomAngle) * randomRadius
             )
         end
     end
     
-    -- Fallback position
+    -- Fallback position with maximum distance
+    local fallbackAngle = math.random() * 2 * math.pi
     return targetPosition + Vector3.new(
-        math.random(-FORMATION_RADIUS, FORMATION_RADIUS),
+        math.cos(fallbackAngle) * (FORMATION_RADIUS + 5),
         GROUND_HEIGHT,
-        math.random(-FORMATION_RADIUS, FORMATION_RADIUS)
+        math.sin(fallbackAngle) * (FORMATION_RADIUS + 5)
     )
 end
 
