@@ -3,7 +3,7 @@
     Features:
       - Teleportation (targeted, safer positioning)
       - Gamemode skip
-      - Hitbox visuals (robust detection)
+      - Hitbox visuals (robust detection)egasddsegdfsghsdhfdshfdhsfdsfhdsfh
       - Kill loop (Kill all / selected players)
       - Auto Upgrade Equipped Weapon (reads LocalPlayer.Stats.Weapon)
       - Unarmed hugging: stay ~2 studs from target
@@ -35,7 +35,7 @@ local gameModeValue = ReplicatedStorage:WaitForChild("GameStatus"):WaitForChild(
 -- Window
 local Window = Fluent:CreateWindow({
     Title = "Utility GUI",
-    SubTitle = "v1.4 (Merged)",
+    SubTitle = "v1.4 (Mesdhsdhdhsrged)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 520),
     Acrylic = true,
@@ -106,7 +106,8 @@ end
 local function getSafeTeleportPosition(targetPosition)
     local randomAngle = math.random() * 2 * math.pi
     local randomDistance = 2 + math.random() * (3 - 2)
-    local offset = Vector3.new(math.cos(randomAngle) * randomDistance, 0, math.sin(randomAngle) * randomDistance)
+    local offset = (root.Position - targetRoot.Position).Unit * 3
+    root.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
     local potentialPosition = targetPosition + offset + Vector3.new(0, 4, 0)
     if isInSafeArea(potentialPosition) then
         return potentialPosition
