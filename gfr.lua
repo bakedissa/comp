@@ -1,25 +1,16 @@
--- Path to the RemoteFunction
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local remotes = ReplicatedStorage:WaitForChild("Remotes")
-
--- New remote for weapon upgrades (safe pcall usage later)
-local purchaseWeaponUpgrade = remotes:FindFirstChild("PurchaseWeaponUpgrade") or remotes:FindFirstChild("PurchaseWeaponUpgrade")
-
--- Example usage (debug only)
--- local result = (purchaseWeaponUpgrade and pcall(function() return purchaseWeaponUpgrade:InvokeServer("AK47", 2) end))
-
 --[[
-    Title: Teleport & Utility GUI (Merged)
-    Description: Unified Teleport, Combat and Utility GUI using Fluent.
-    Author: Gemini (merged & patched)
-    Notes: Combines the reliable auto-kill system from the original script with the improved boundary-safety,
-           SkipShieldUsers option, UI layout, and other improvements from the patched script.
+Title: Teleport & Utility GUI (Merged with Auto Upgrade + Unarmed Hugging Fix)
+Description: Unified Teleport, Combat and Utility GUI using Fluent.
+Author: Gemini (merged & patched)
+Notes: Adds Auto Upgrade Equipped Weapon, robust hitboxdrthfyhfdjgdfhrdfhdfhdfhfdghhfdhfd discovery, and unarmed hugging logic.
 ]]
+
 
 -- Load Fluent library and addons
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
 
 -- Roblox Services
 local Players = game:GetService("Players")
@@ -27,29 +18,34 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+
 -- Wait for crucial folders
 local CharactersFolder = Workspace:WaitForChild("Characters")
 
+
 -- Create the main GUI Window
 local Window = Fluent:CreateWindow({
-    Title = "Utility GUI",
-    SubTitle = "v1.4 (Merged)",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 520),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.RightControl
+Title = "Utility GUI",
+SubTitle = "v1.4 (Merged)",
+TabWidth = 160,
+Size = UDim2.fromOffset(580, 520),
+Acrylic = true,
+Theme = "Dark",
+MinimizeKey = Enum.KeyCode.RightControl
 })
+
 
 -- Add Tabs to the Window
 local Tabs = {
-    Automation = Window:AddTab({ Title = "Automation", Icon = "bot" }),
-    Combat = Window:AddTab({ Title = "Combat", Icon = "swords" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+Automation = Window:AddTab({ Title = "Automation", Icon = "bot" }),
+Combat = Window:AddTab({ Title = "Combat", Icon = "swords" }),
+Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
+
 
 -- Centralized options table from Fluent
 local Options = Fluent.Options
+
 
 -- ========================================================================
 -- Script-wide variables
@@ -60,363 +56,53 @@ local heartbeatConnection = nil
 local killConnection = nil
 local autoUpgradeConnection = nil
 
+
 -- Remotes and Values
 local skipRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SkipVoteRequest")
+local purchaseWeaponUpgrade = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("PurchaseWeaponUpgrade")
 local gameModeValue = ReplicatedStorage:WaitForChild("GameStatus"):WaitForChild("Gamemode")
+
 
 -- State
 local isAlive = false
 local hasTeleportedThisLife = false
+
 
 -- Boundary clamp (X/Z only matter, Y ignored)
 local SAFE_MIN = Vector3.new(-25, -math.huge, -26)
 local SAFE_MAX = Vector3.new(27, math.huge, 28)
 local BOUNDARY_PADDING = 2 -- inward padding to avoid clipping
 
+
 -- Debug print helper
 local function debugAction(tag, msg)
-    print(string.format("[%s] %s", tag, tostring(msg)))
+print(string.format("[%s] %s", tag, tostring(msg)))
 end
+
 
 -- Reset teleport state
 local function resetTeleportState()
-    hasTeleportedThisLife = false
+hasTeleportedThisLife = false
 end
+
 
 -- Team check
 local function onSameTeam(player1, player2)
-    if not player1 or not player2 or not player1:FindFirstChild("Stats") or not player2:FindFirstChild("Stats") then return false end
-    local team1Val = player1.Stats:FindFirstChild("Team")
-    local team2Val = player2.Stats:FindFirstChild("Team")
-    if not team1Val or not team2Val then return false end
-    if team1Val.Value == "FFA" or team2Val.Value == "FFA" then return false end
-    return team1Val.Value == team2Val.Value
+if not player1 or not player2 or not player1:FindFirstChild("Stats") or not player2:FindFirstChild("Stats") then return false end
+local team1Val = player1.Stats:FindFirstChild("Team")
+local team2Val = player2.Stats:FindFirstChild("Team")
+if not team1Val or not team2Val then return false end
+if team1Val.Value == "FFA" or team2Val.Value == "FFA" then return false end
+return team1Val.Value == team2Val.Value
 end
+
 
 -- Juggernaut check
 local function isJuggernaut()
-    if not localPlayer:FindFirstChild("Stats") then return false end
-    local hunterValue = localPlayer.Stats:FindFirstChild("Hunter")
-    if not hunterValue then return false end
-    return hunterValue.Value == "Juggernaut" or hunterValue.Value == "MultiJuggernaut"
-end
-
--- Safety helpers
-local function clampInsideBounds(pos)
-    local x = math.clamp(pos.X, SAFE_MIN.X + BOUNDARY_PADDING, SAFE_MAX.X - BOUNDARY_PADDING)
-    local z = math.clamp(pos.Z, SAFE_MIN.Z + BOUNDARY_PADDING, SAFE_MAX.Z - BOUNDARY_PADDING)
-    return Vector3.new(x, pos.Y, z)
-end
-
-local function isInSafeArea(position)
-    return (position - Vector3.new(-2, 23, 3)).Magnitude <= 50
-end
-
-local function getSafeTeleportPosition(targetPosition)
-    local randomAngle = math.random() * 2 * math.pi
-    local randomDistance = 2 + math.random() * (3 - 2)
-    local offset = Vector3.new(
-        math.cos(randomAngle) * randomDistance,
-        0,
-        math.sin(randomAngle) * randomDistance
-    )
-    local potentialPosition = targetPosition + offset + Vector3.new(0, 4, 0)
-    if isInSafeArea(potentialPosition) then
-        return potentialPosition
-    else
-        local directionToCenter = (Vector3.new(-2, 23, 3) - targetPosition).Unit
-        return targetPosition + (directionToCenter * 3) + Vector3.new(0, 4, 0)
-    end
-end
-
--- ========================================================================
--- Core teleport logic (Automation tab)
--- ========================================================================
-local function teleportToTarget()
-    if not isAlive or not targetPlayer or not targetPlayer.Character then return end
-
-    local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetRoot or not localRoot then return end
-
-    if onSameTeam(localPlayer, targetPlayer) or isJuggernaut() then
-        if not hasTeleportedThisLife then
-            -- teleport below the target once per life (original safer behavior)
-            localRoot.CFrame = targetRoot.CFrame + Vector3.new(0, -50, 0)
-            debugAction("teleport", "Same team or Juggernaut. Teleporting below target.")
-            hasTeleportedThisLife = true
-        end
-    else
-        -- prefer safe random offset, then clamp inside bounds
-        local teleportPosition = getSafeTeleportPosition(targetRoot.Position)
-        teleportPosition = clampInsideBounds(teleportPosition)
-        localRoot.CFrame = CFrame.new(teleportPosition)
-    end
-end
-
--- Find target player helper
-local function findTargetPlayer(username)
-    targetPlayer = Players:FindFirstChild(username)
-    if targetPlayer then
-        resetTeleportState()
-        debugAction("target", "Target found: " .. targetPlayer.Name)
-        -- reconnect on respawn to reset state
-        targetPlayer.CharacterAdded:Connect(function()
-            resetTeleportState()
-            debugAction("target", "Target respawned, reset state")
-        end)
-    else
-        warn("Target not found: " .. tostring(username))
-    end
-    return targetPlayer ~= nil
-end
-
--- Start / stop teleport loop (uses heartbeatConnection)
-local function stopTeleporting()
-    if heartbeatConnection then
-        heartbeatConnection:Disconnect()
-        heartbeatConnection = nil
-        debugAction("system", "Teleport loop stopped")
-    end
-    targetPlayer = nil
-    resetTeleportState()
-end
-
-local function startTeleporting()
-    stopTeleporting()
-    if not Options.TeleportEnabled or not Options.TargetPlayer or Options.TargetPlayer.Value == "None" then
-        return
-    end
-    if findTargetPlayer(Options.TargetPlayer.Value) then
-        heartbeatConnection = RunService.Heartbeat:Connect(function() pcall(teleportToTarget) end)
-        debugAction("system", "Teleport loop started for " .. Options.TargetPlayer.Value)
-    end
-end
-
--- ========================================================================
--- Gamemode skip logic
--- ========================================================================
-local function isGamemodeWanted()
-    local wanted = Options.WantedGamemodes.Value
-    for mode, selected in pairs(wanted) do
-        if selected and gameModeValue.Value == mode then
-            return true
-        end
-    end
-    return false
-end
-
-local function handleGamemodeSkip()
-    if not Options.AutoSkipEnabled.Value then return end
-    if not isGamemodeWanted() then
-        debugAction("gamemode", "Undesirable gamemode: '" .. tostring(gameModeValue.Value) .. "'. Firing skip request.")
-        pcall(function() skipRemote:FireServer() end)
-    else
-        debugAction("gamemode", "Desirable gamemode found: '" .. tostring(gameModeValue.Value) .. "'.")
-    end
-end
-
--- ========================================================================
--- Combat Utilities Logic (hitboxes, attack checks, killLoop)
--- ========================================================================
--- Hitbox visuals
-local originalHitboxProperties = {}
-local hitboxConnection = nil
-
-local function revertHitboxVisuals(part)
-    if originalHitboxProperties[part] then
-        pcall(function()
-            part.Color = originalHitboxProperties[part].Color
-            part.Transparency = originalHitboxProperties[part].Transparency
-        end)
-        originalHitboxProperties[part] = nil
-    end
-end
-
-local function revertAllHitboxVisuals()
-    for part, _ in pairs(originalHitboxProperties) do
-        if part and part.Parent then
-            revertHitboxVisuals(part)
-        end
-    end
-    originalHitboxProperties = {}
-end
-
--- Helper: find hitbox part from a weapon model. This checks several common names.
-local function findHitboxPart(model)
-    if not model then return nil end
-    local namesToTry = {"Hitbox", "WeaponHitBox", "WeaponHitbox", "HitboxPart", "Part", "Handle", "Main"}
-    for _, name in ipairs(namesToTry) do
-        local found = model:FindFirstChild(name)
-        if found and found:IsA("BasePart") then
-            return found
-        end
-    end
-    -- fallback: try to find any BasePart inside the model
-    for _, child in ipairs(model:GetChildren()) do
-        if child:IsA("BasePart") then return child end
-    end
-    return nil
-end
-
-local function updateAllHitboxVisuals()
-    if not Options.ShowHitboxes.Value then return end
-    local processedParts = {}
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character and player:FindFirstChild("Stats") and player.Stats:FindFirstChild("Weapon") then
-            local weaponName = player.Stats.Weapon.Value
-            local playerCharacter = CharactersFolder:FindFirstChild(player.Name)
-            if playerCharacter then
-                local hitboxPart
-                if weaponName == "Unarmed" then
-                    -- for unarmed, use the player's HumanoidRootPart if available
-                    hitboxPart = playerCharacter:FindFirstChild("HumanoidRootPart") or playerCharacter:FindFirstChild("Torso")
-                else
-                    local weaponModel = playerCharacter:FindFirstChild(weaponName)
-                    hitboxPart = findHitboxPart(weaponModel)
-                end
-
-                if hitboxPart then
-                    table.insert(processedParts, hitboxPart)
-                    if not originalHitboxProperties[hitboxPart] then
-                        originalHitboxProperties[hitboxPart] = { Color = hitboxPart.Color, Transparency = hitboxPart.Transparency }
-                        pcall(function()
-                            hitboxPart.Color = Color3.fromRGB(255,0,0)
-                            hitboxPart.Transparency = 0.5
-                        end)
-                        hitboxPart.Destroying:Connect(function() originalHitboxProperties[hitboxPart] = nil end)
-                    end
-                end
-            end
-        end
-    end
-
-    for part, _ in pairs(originalHitboxProperties) do
-        if not table.find(processedParts, part) then
-            revertHitboxVisuals(part)
-        end
-    end
-end
-
--- Attack conditions, merged (skip shield users option retained)
-local function isAttackable(target)
-    if not target or target == localPlayer then return false end
-    if not target:FindFirstChild("Stats") or not localPlayer:FindFirstChild("Stats") then return false end
-
-    -- Skip shield users if toggle enabled
-    if Options.SkipShieldUsers and Options.SkipShieldUsers.Value then
-        local weaponVal = target.Stats:FindFirstChild("Weapon")
-        if weaponVal and weaponVal.Value == "Shield" then
-            return false
-        end
-    end
-
-    local targetTeamVal = target.Stats:FindFirstChild("Team")
-    local localTeamVal = localPlayer.Stats:FindFirstChild("Team")
-    if not targetTeamVal or not localTeamVal then return false end
-
-    local targetTeam = targetTeamVal.Value
-    local localTeam = localTeamVal.Value
-
-    if targetTeam == "FFA" or localTeam == "FFA" or targetTeam == "Survivor" or localTeam == "Survivor" then
-        return true
-    end
-
-    return targetTeam ~= localTeam
-end
-
--- Helper: get equipped weapon name (safe)
-local function getEquippedWeaponName()
-    if not localPlayer or not localPlayer:FindFirstChild("Stats") then return nil end
-    local weaponVal = localPlayer.Stats:FindFirstChild("Weapon")
-    if weaponVal then return weaponVal.Value end
-    return nil
-end
-
--- Core kill loop: merged behavior using reliable selection from original script
-local function killLoop()
-    if not isAlive then return end
-    if not Options.KillAllPlayers.Value and not Options.KillPlayers.Value then return end
-
-    local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
-
-    -- Determine target list
-    local potentialTargets = {}
-    if Options.KillAllPlayers.Value then
-        potentialTargets = Players:GetPlayers()
-    elseif Options.KillPlayers.Value then
-        for name, selected in pairs(Options.KillTargets.Value) do
-            if selected then
-                local p = Players:FindFirstChild(name)
-                if p then table.insert(potentialTargets, p) end
-            end
-        end
-    end
-
-    -- Filter and sort targets
-    local validTargets = {}
-    for _, p in ipairs(potentialTargets) do
-        local aliveVal = p:FindFirstChild("Alive")
-        if aliveVal and aliveVal.Value == true and isAttackable(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            table.insert(validTargets, p)
-        end
-    end
-
-    if #validTargets == 0 then return end
-    table.sort(validTargets, function(a, b) return a.Name < b.Name end)
-
-    -- Select final target
-    local finalTarget = validTargets[1]
-    local targetRoot = finalTarget.Character:FindFirstChild("HumanoidRootPart")
-    if not targetRoot then return end
-
-    -- Use local player's weapon part for range
-    local localWeaponName = getEquippedWeaponName()
-    local weaponPart
-    local localCharModel = CharactersFolder:FindFirstChild(localPlayer.Name)
-    if localWeaponName and localCharModel then
-        if localWeaponName == "Unarmed" then
-            -- when unarmed, we treat the player's own root as the 'hitbox' part
-            weaponPart = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-        else
-            local weaponModel = localCharModel:FindFirstChild(localWeaponName)
-            weaponPart = findHitboxPart(weaponModel)
-        end
-    end
-
-    if weaponPart and targetRoot then
-        local weaponRange = 1.5 -- default for safety
-        if weaponPart.Size and weaponPart.Size.Z then
-            weaponRange = math.max(weaponPart.Size.Z, 1.5)
-        end
-        local targetPosition = targetRoot.Position
-
-        if localWeaponName == "Unarmed" then
-            -- hugging behavior: move very close to the target and face them
-            local direction = (targetPosition - localRoot.Position).Unit
-            local hugOffset = direction * (weaponRange * 0.5)
-            local desiredPos = targetPosition - hugOffset
-            desiredPos = clampInsideBounds(desiredPos)
-            local finalPos = Vector3.new(desiredPos.X, localRoot.Position.Y, desiredPos.Z)
-            localRoot.CFrame = CFrame.new(finalPos, targetPosition)
-        else
-            -- compute desired position behind target based on their LookVector and weapon range
-            -- then clamp inside bounds and maintain local player's current Y to avoid clipping
-            local desiredPos = targetPosition - (targetRoot.CFrame.LookVector * weaponRange)
-            desiredPos = clampInsideBounds(desiredPos)
-            local finalPos = Vector3.new(desiredPos.X, localRoot.Position.Y, desiredPos.Z)
-
-            -- face target and teleport local player to finalPos
-            localRoot.CFrame = CFrame.new(finalPos, targetPosition)
-        end
-    end
-end
-
--- ========================================================================
--- GUI Elements (Automation, Combat, Settings)
--- ========================================================================
+if not localPlayer:FindFirstChild("Stats") then return false end
+local hunterValue = localPlayer.Stats:FindFirstChild("Hunter")
+if not hunterValue then return false end
+end)
 
 -- Automation Tab: Teleport + Gamemode skip
 Tabs.Automation:AddParagraph({ Title = "Teleportation", Content = "Enable/disable teleport and select a target." })
