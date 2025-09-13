@@ -1,7 +1,7 @@
 --[[ 
 Title: Teleport & Utility GUI (Merged) 
 Description: Unified Teleport, Combat and Utility GUI using Fluent.
-Author: Gemini (merged & patched)
+Author: Gemini (merged & patched)saddsafsgaasgagsgsaagsgas
 Notes: Combines the reliable auto-kill system from the original script with the improved boundary-safety, SkipShieldUsers option, UI layout, 
 and other improvements from the patched script. Added Auto Upgrade Equipped Weapon + Unarmed hug logic.
 ]]
@@ -338,7 +338,7 @@ local function killLoop()
             local localCharModel = CharactersFolder:FindFirstChild(localPlayer.Name)
             if localCharModel then
                 local weaponModel = localCharModel:FindFirstChild(localWeaponName.Value)
-                weaponPart = weaponModel and (weaponModel:FindFirstChild("Hitbox") or weaponModel:FindFirstChild("WeaponHitBox") or weaponModel:FindFirstChild("Part"))
+                weaponPart = weaponModel and (weaponModel:FindFirstChild("Hitbox") or weaponModel:FindFirstChild("WeaponHitbox") or weaponModel:FindFirstChild("Part"))
                 if weaponPart then
                     weaponRange = weaponPart.Size.Z or 0
                 end
