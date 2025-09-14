@@ -1,6 +1,6 @@
 --[[ 
 Title: Teleport & Utility GUI (Merged) 
-Description: Unified Teleport, Combat and Utility GUI using Fluent.
+Description: Unified Teleport, Combat andgsdgdsfhgsdaadrsfhjhjrtewasthdssjdthsjtrfsfgdtj Utility GUI using Fluent.
 Author: Gemini (merged & patched)
 Notes: Combines the reliable auto-kill system from the original script with the improved boundary-safety, SkipShieldUsers option, UI layout, 
 and other improvements from the patched script. Added Auto Upgrade Equipped Weapon + Unarmed hug logic + AFK prioritization.
@@ -348,15 +348,11 @@ local function stopAFKScanner()
 end
 
 -- ========================================================================
--- Core kill loop (with AFK prioritization)
+-- Core kill loop (with AFK prioritization + target locking)
 -- ========================================================================
-local function killLoop()
-    if not isAlive then return end
-    if not Options.KillAllPlayers.Value and not Options.KillPlayers.Value then return end
-    local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
+local currentTarget = nil
 
-    -- Determine potential targets
+local function pickNewTarget()
     local potentialTargets = {}
     if Options.KillAllPlayers.Value then
         potentialTargets = Players:GetPlayers()
@@ -369,115 +365,89 @@ local function killLoop()
         end
     end
 
-    -- Filter valid targets
     local validTargets = {}
     for _, p in ipairs(potentialTargets) do
         local aliveVal = p:FindFirstChild("Alive")
-        if aliveVal and aliveVal.Value == true and isAttackable(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+        if aliveVal and aliveVal.Value == true and isAttackable(p)
+           and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
             table.insert(validTargets, p)
         end
     end
-    if #validTargets == 0 then return end
+    if #validTargets == 0 then return nil end
 
-    -- Optionally prioritize AFK targets
-    local prioritizedList = {}
+    -- AFK priority
     if Options.PrioritizeAFK and Options.PrioritizeAFK.Value then
-        local afkList = {}
-        local nonAfk = {}
         for _, p in ipairs(validTargets) do
             if AFKPlayers[p] then
-                table.insert(afkList, p)
-            else
-                table.insert(nonAfk, p)
+                return p
             end
-        end
-        table.sort(afkList, function(a,b) return a.Name < b.Name end)
-        table.sort(nonAfk, function(a,b) return a.Name < b.Name end)
-        for _, v in ipairs(afkList) do table.insert(prioritizedList, v) end
-        for _, v in ipairs(nonAfk) do table.insert(prioritizedList, v) end
-    else
-        table.sort(validTargets, function(a,b) return a.Name < b.Name end)
-        prioritizedList = validTargets
-    end
-
-    -- Choose final target (with fallback to original selected kill targets or TargetPlayer if AFK moves)
-    local finalTarget = prioritizedList[1]
-
-    -- If finalTarget was AFK but moved (no longer AFK) and you have explicit kill-targets set,
-    -- fall back to the first selected KillTargets or the TargetPlayer value where applicable.
-    if finalTarget and Options.PrioritizeAFK and Options.PrioritizeAFK.Value and not AFKPlayers[finalTarget] then
-        -- try fallback: if KillPlayers mode, pick the first still-valid selected kill target
-        if Options.KillPlayers and Options.KillPlayers.Value then
-            for name, selected in pairs(Options.KillTargets.Value) do
-                if selected then
-                    local candidate = Players:FindFirstChild(name)
-                    -- ensure candidate is still valid
-                    for _, v in ipairs(validTargets) do
-                        if v == candidate then
-                            finalTarget = candidate
-                            break
-                        end
-                    end
-                    if finalTarget and finalTarget == candidate then break end
-                end
-            end
-        end
-        -- if still no finalTarget found and a TargetPlayer dropdown exists, try that
-        if (not finalTarget or not table.find(validTargets, finalTarget)) and Options.TargetPlayer and Options.TargetPlayer.Value ~= "None" then
-            local candidate = Players:FindFirstChild(Options.TargetPlayer.Value)
-            if candidate then
-                for _, v in ipairs(validTargets) do
-                    if v == candidate then
-                        finalTarget = candidate
-                        break
-                    end
-                end
-            end
-        end
-        -- otherwise, fall back to first in prioritizedList
-        if not finalTarget then
-            finalTarget = prioritizedList[1]
         end
     end
 
-    if not finalTarget then return end
-    local targetRoot = finalTarget.Character and finalTarget.Character:FindFirstChild("HumanoidRootPart")
+    -- fallback: alphabetical
+    table.sort(validTargets, function(a,b) return a.Name < b.Name end)
+    return validTargets[1]
+end
+
+local function getActiveTarget()
+    if not currentTarget 
+       or not currentTarget:FindFirstChild("Alive")
+       or currentTarget.Alive.Value == false
+       or not isAttackable(currentTarget) then
+        currentTarget = pickNewTarget()
+    end
+    return currentTarget
+end
+
+local function killLoop()
+    if not isAlive then return end
+    if not Options.KillAllPlayers.Value and not Options.KillPlayers.Value then return end
+
+    local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    local target = getActiveTarget()
+    if not target then return end
+
+    -- Drop AFK if they "wake up"
+    if Options.PrioritizeAFK and Options.PrioritizeAFK.Value and not AFKPlayers[target] then
+        currentTarget = pickNewTarget()
+        target = currentTarget
+        if not target then return end
+    end
+
+    local targetRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
     if not targetRoot then return end
 
-    -- Weapon logic (handles Unarmed hugging + many hitbox spellings)
+    -- Weapon logic
     local localWeaponName = localPlayer:FindFirstChild("Stats") and localPlayer.Stats:FindFirstChild("Weapon")
-    local weaponPart
     local weaponRange = 0
-
     if localWeaponName then
         if localWeaponName.Value == "Unarmed" then
-            weaponRange = tonumber(Options.UnarmedDistance and Options.UnarmedDistance.Value) or 2 -- hugging distance (configurable)
+            weaponRange = tonumber(Options.UnarmedDistance and Options.UnarmedDistance.Value) or 2
         else
             local localCharModel = CharactersFolder:FindFirstChild(localPlayer.Name)
             if localCharModel then
                 local weaponModel = localCharModel:FindFirstChild(localWeaponName.Value)
                 if weaponModel then
-                    weaponPart = weaponModel:FindFirstChild("Hitbox")
+                    local weaponPart = weaponModel:FindFirstChild("Hitbox")
                         or weaponModel:FindFirstChild("WeaponHitbox")
                         or weaponModel:FindFirstChild("WeaponHitBox")
                         or weaponModel:FindFirstChild("Part")
                     if weaponPart then
                         weaponRange = weaponPart.Size.Z or 0
-                    else
-                        -- optional debug if you want to see missing hitboxes uncomment:
-                        -- debugAction("weapon", "No hitbox found for weapon: " .. tostring(localWeaponName.Value))
                     end
                 end
             end
         end
     end
 
-    if targetRoot and weaponRange > 0 then
-        local targetPosition = targetRoot.Position
-        local desiredPos = targetPosition - (targetRoot.CFrame.LookVector * weaponRange)
+    if weaponRange > 0 then
+        local targetPos = targetRoot.Position
+        local desiredPos = targetPos - (targetRoot.CFrame.LookVector * weaponRange)
         desiredPos = clampInsideBounds(desiredPos)
         local finalPos = Vector3.new(desiredPos.X, localRoot.Position.Y, desiredPos.Z)
-        localRoot.CFrame = CFrame.new(finalPos, targetPosition)
+        localRoot.CFrame = CFrame.new(finalPos, targetPos)
     end
 end
 
