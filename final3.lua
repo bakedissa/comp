@@ -67,11 +67,6 @@ local SAFE_MIN = Vector3.new(-25, -math.huge, -26)
 local SAFE_MAX = Vector3.new(27, math.huge, 28)
 local BOUNDARY_PADDING = 2
 
--- Debug print helper
-local function debugAction(tag, msg)
-    print(string.format("[%s] %s", tag, tostring(msg)))
-end
-
 -- Reset teleport state
 local function resetTeleportState()
     hasTeleportedThisLife = false
@@ -133,7 +128,6 @@ local function teleportToTarget()
     if onSameTeam(localPlayer, targetPlayer) or isJuggernaut() then
         if not hasTeleportedThisLife then
             localRoot.CFrame = targetRoot.CFrame + Vector3.new(0, -50, 0)
-            debugAction("teleport", "Same team or Juggernaut. Teleporting below target.")
             hasTeleportedThisLife = true
         end
     else
@@ -148,10 +142,8 @@ local function findTargetPlayer(username)
     targetPlayer = Players:FindFirstChild(username)
     if targetPlayer then
         resetTeleportState()
-        debugAction("target", "Target found: " .. targetPlayer.Name)
         targetPlayer.CharacterAdded:Connect(function()
             resetTeleportState()
-            debugAction("target", "Target respawned, reset state")
         end)
     else
         warn("Target not found: " .. tostring(username))
@@ -164,7 +156,6 @@ local function stopTeleporting()
     if heartbeatConnection then
         heartbeatConnection:Disconnect()
         heartbeatConnection = nil
-        debugAction("system", "Teleport loop stopped")
     end
     targetPlayer = nil
     resetTeleportState()
@@ -175,7 +166,6 @@ local function startTeleporting()
     if not Options.TeleportEnabled or not Options.TargetPlayer or Options.TargetPlayer.Value == "None" then return end
     if findTargetPlayer(Options.TargetPlayer.Value) then
         heartbeatConnection = RunService.Heartbeat:Connect(function() pcall(teleportToTarget) end)
-        debugAction("system", "Teleport loop started for " .. Options.TargetPlayer.Value)
     end
 end
 
@@ -190,15 +180,6 @@ local function isGamemodeWanted()
     return false
 end
 
-local function handleGamemodeSkip()
-    if not Options.AutoSkipEnabled.Value then return end
-    if not isGamemodeWanted() then
-        debugAction("gamemode", "Undesirable gamemode: '" .. tostring(gameModeValue.Value) .. "'. Firing skip request.")
-        pcall(function() skipRemote:FireServer() end)
-    else
-        debugAction("gamemode", "Desirable gamemode found: '" .. tostring(gameModeValue.Value) .. "'.")
-    end
-end
 
 -- ========================================================================
 -- Combat Utilities Logic (hitboxes, attack checks, killLoop)
@@ -686,6 +667,9 @@ SaveManager:SetFolder("FluentScriptHub/specific-game")
 SaveManager:BuildConfigSection(Tabs.Settings)
 InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 Window:SelectTab(1)
-
-Fluent:Notify({ Title = "Utility GUI", Content = "Loaded successfully with Chaotic Kill.", Duration = 6 })
+Fluent:Notify({
+    Title = "Rotation Wars GUI",
+    Content = "Sucessfully Loaded, Join the server; https://discord.gg/PQvfmPyVtS",
+    Duration = 999
+})
 SaveManager:LoadAutoloadConfig()
