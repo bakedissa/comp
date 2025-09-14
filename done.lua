@@ -22,8 +22,8 @@ local CharactersFolder = Workspace:WaitForChild("Characters")
 
 -- Create the main GUI Window
 local Window = Fluent:CreateWindow({
-    Title = "Utility GUI",
-    SubTitle = "v1.6 (Merged)",
+    Title = "Rotation Wars by issa",
+    SubTitle = "https://discord.gg/gZMQFPnPFz",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 520),
     Acrylic = true,
